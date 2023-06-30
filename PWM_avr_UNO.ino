@@ -3,6 +3,9 @@
 volatile uint8_t flag = 0;
 unsigned long prevtime = 0;
 float data = 0;
+int counter_on = 0, counter_off = 0;
+const int freq = 5000;
+float DTp = 50;
 
 
 /*  ===Catatan Perhitungan Angka untuk Register OCR1A===
@@ -43,6 +46,8 @@ void init_timer(){
 
 
 ISR(TIMER1_COMPA_vect){
+  counter_on = ((int)(1.6e7 * DTp / (8.0 * 100.0 * freq))) - 1;
+  counter_off = ((int)(1.6e7 * (100 - DTp) / (8.0 * 100.0 * freq))) - 1;
   if(flag){
     // Mematikan LED
     flag = 0;
@@ -50,8 +55,8 @@ ISR(TIMER1_COMPA_vect){
     PORTD = ~(1 << PD3);
 
     // Set OCR1A ke 3999 (2 ms)
-    OCR1AH = 0b00001111;
-    OCR1AL = 0b10011111;
+    OCR1AH = counter_on >> 8;
+    OCR1AL = counter_on & 0xFF;
   }
   else{
     // Menyalakan LED
@@ -60,8 +65,8 @@ ISR(TIMER1_COMPA_vect){
     PORTD = 1 << PD3;
 
     // Set OCR1A ke 3999 (2 ms)
-    OCR1AH = 0b00001111;
-    OCR1AL = 0b10011111;
+    OCR1AH = counter_off >> 8;
+    OCR1AL = counter_off & 0xFF;
   }
 }
 
@@ -73,7 +78,7 @@ void setup() {
   // Set pin Builtin LED (D13/PB5 menjadi output, sisanya dont care)
   DDRB = 0b00100000;
 
-  // Set pin analog untuk pembacaan tegangan (A1PC1 menjadi input, sisanya dont care)
+  // Set pin analog untuk pembacaan tegangan (A1/PC1 menjadi input, sisanya dont care)
   DDRC = 0x0;
 
   // Set kondisi awal pin D13 (atau PB5) menjadi LOW
@@ -90,9 +95,13 @@ void setup() {
 
 void loop() {
   // Komentar
-  if(millis() - prevtime > 1){
-    prevtime = millis();
+  if(micros() - prevtime > 50){
+    prevtime = micros();
     data = ((float)analogRead(A1)) * 5.0 / 1023.0;
-    Serial.println(data, 4);
+    Serial.print(data, 4);
+    Serial.print(" | ");
+    Serial.print(counter_on);
+    Serial.print(" | ");
+    Serial.println(counter_off);
   }
 }
