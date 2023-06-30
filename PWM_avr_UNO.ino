@@ -6,7 +6,8 @@ unsigned long prevtime = 0;
 float data = 0;
 int counter_on = 0, counter_off = 0;
 const int freq = 5000;
-float DTp = 50;
+const int konstanta = (int)(1.6e7 / (100.0 * freq));
+int DTp = 50;   //Ingat kalau Duty Cycle output/input = 1 - DTp karena pake PMOS
 
 LCD_I2C myLCD(0x27, 16, 2);
 
@@ -24,13 +25,14 @@ Count yang digunakan untuk memperoleh periode sebesar 1 ms adalah 15625/1000 = 1
 */
 
 
-void init_timer(){
+void init_int(){
+  //                            ==============================Bagian Internal Interrupt==============================
   // Mode CTC dengan batas atas berupa isi register OCR1A, WGM12 = 1, WGM13 = WGM11 = WGM10 = 0
   TCCR1A = 0;
   TCCR1B = (1 << WGM12);
 
-  // Set prescaler ke 8, CS11 = 1, CS11 = CS10 = 0
-  TCCR1B |= (1 << CS11);
+  // Set prescaler ke 64, CS10 = 1, CS11 = CS12 = 0
+  TCCR1B |= (1 << CS10);
 
   // Enable output compare A dengan macro OCIE1A, vektornya pake TIMER1 COMPA
   TIMSK1 = (1 << OCIE1A);
@@ -39,25 +41,52 @@ void init_timer(){
   TCNT1H = 0x0;
   TCNT1L = 0x0;
 
-  // Set nilai TOP awal yaitu 3999 (2 ms), nilai TOP atau isi register OCR1A = (OCR1AH << 8) + OCR1AL
-  OCR1AH = 0b00001111;
-  OCR1AL = 0b10011111;
+  // Set nilai TOP awal, nilai TOP atau isi register OCR1A = (OCR1AH << 8) + OCR1AL
+  counter_off = konstanta * DTp - 1;
+  OCR1AH = counter_off >> 8;
+  OCR1AL = counter_off && 0xFF;
 
   // Enable global interrupt
   SREG = (1 << 7);
+
+  //                            ==============================Bagian External Interrupt==============================
+  // Set Rising Edge pada INT0 (ISC01 & ISC00) dan INT1 (ISC11 & ISC10)
+  EICRA = (1 << ISC11) | (1 << ISC10) | (1 << ISC01) | (1 << ISC00);
+
+  // Enable INT0 dan INT1
+  EIMSK = (1 << INT1) | (1 << INT0);
+}
+
+
+ISR(INT0_vect){
+  if(DTp >= 95){
+    DTp = 95;
+  }
+  else{
+    DTp += 1;
+  }
+}
+
+ISR(INT1_vect){
+  if(DTp <= 5){
+    DTp = 5;
+  }
+  else{
+    DTp -= 1;
+  }
 }
 
 
 ISR(TIMER1_COMPA_vect){
-  counter_on = ((int)(1.6e7 * DTp / (8.0 * 100.0 * freq))) - 1;
-  counter_off = ((int)(1.6e7 * (100 - DTp) / (8.0 * 100.0 * freq))) - 1;
+  counter_on = konstanta * (100 - DTp) - 1;
+  counter_off = konstanta * DTp - 1;
   if(flag){
     // Mematikan LED
     flag = 0;
     PORTB = ~(1 << PB5);
     PORTD = ~(1 << PD4);
 
-    // Set OCR1A ke 3999 (2 ms)
+    // Set OCR1A
     OCR1AH = counter_on >> 8;
     OCR1AL = counter_on & 0xFF;
   }
@@ -67,7 +96,7 @@ ISR(TIMER1_COMPA_vect){
     PORTB = 1 << PB5;
     PORTD = 1 << PD4;
 
-    // Set OCR1A ke 3999 (2 ms)
+    // Set OCR1A
     OCR1AH = counter_off >> 8;
     OCR1AL = counter_off & 0xFF;
   }
@@ -75,7 +104,7 @@ ISR(TIMER1_COMPA_vect){
 
 
 void setup() {
-  // Set pin RX & pin D3
+  // Set pin RX (output), pin D4 (output), pin D3 (input), dan pin D2 (input)
   DDRD = 0b00010001;
 
   // Set pin Builtin LED (D13/PB5 menjadi output, sisanya dont care)
@@ -90,30 +119,30 @@ void setup() {
   PORTC = ~(1 << PC1);
 
   // Setting PWM
-  init_timer();
+  init_int();
 
   // Setting LCD
   myLCD.begin();
   //myLCD.backlight();
 
-  Serial.begin(9600);
+  Serial.begin(115200);
 }
 
 
 void loop() {
   // Komentar
-  if(micros() - prevtime > 50){
+  if(micros() - prevtime > 25){
     prevtime = micros();
     data = ((float)analogRead(A1)) * 5.0 / 1023.0;
     Serial.println(data, 4);
     myLCD.setCursor(0, 0);
     myLCD.print("DT: ");
-    myLCD.print(DTp, 0);
+    myLCD.print((float)DTp, 1);
     myLCD.print("%");
 
     myLCD.setCursor(0, 1);
-    myLCD.print(counter_on);
+    myLCD.print((float)counter_on, 1);
     myLCD.print(" | ");
-    myLCD.print(counter_off);
+    myLCD.print((float)counter_off, 1);
   }
 }
