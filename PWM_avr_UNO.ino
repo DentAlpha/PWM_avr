@@ -1,3 +1,4 @@
+#include <LCD_I2C.h>
 #include <avr/io.h>
 
 volatile uint8_t flag = 0;
@@ -6,6 +7,8 @@ float data = 0;
 int counter_on = 0, counter_off = 0;
 const int freq = 5000;
 float DTp = 50;
+
+LCD_I2C myLCD(0x27, 16, 2);
 
 
 /*  ===Catatan Perhitungan Angka untuk Register OCR1A===
@@ -52,7 +55,7 @@ ISR(TIMER1_COMPA_vect){
     // Mematikan LED
     flag = 0;
     PORTB = ~(1 << PB5);
-    PORTD = ~(1 << PD3);
+    PORTD = ~(1 << PD4);
 
     // Set OCR1A ke 3999 (2 ms)
     OCR1AH = counter_on >> 8;
@@ -62,7 +65,7 @@ ISR(TIMER1_COMPA_vect){
     // Menyalakan LED
     flag = 1;
     PORTB = 1 << PB5;
-    PORTD = 1 << PD3;
+    PORTD = 1 << PD4;
 
     // Set OCR1A ke 3999 (2 ms)
     OCR1AH = counter_off >> 8;
@@ -73,7 +76,7 @@ ISR(TIMER1_COMPA_vect){
 
 void setup() {
   // Set pin RX & pin D3
-  DDRD = 0b00001001;
+  DDRD = 0b00010001;
 
   // Set pin Builtin LED (D13/PB5 menjadi output, sisanya dont care)
   DDRB = 0b00100000;
@@ -82,12 +85,16 @@ void setup() {
   DDRC = 0x0;
 
   // Set kondisi awal pin D13 (atau PB5) menjadi LOW
-  PORTD = ~(1 << PD3);
+  PORTD = ~(1 << PD4);
   PORTB = ~(1 << PB5);
   PORTC = ~(1 << PC1);
 
   // Setting PWM
   init_timer();
+
+  // Setting LCD
+  myLCD.begin();
+  //myLCD.backlight();
 
   Serial.begin(9600);
 }
@@ -98,10 +105,15 @@ void loop() {
   if(micros() - prevtime > 50){
     prevtime = micros();
     data = ((float)analogRead(A1)) * 5.0 / 1023.0;
-    Serial.print(data, 4);
-    Serial.print(" | ");
-    Serial.print(counter_on);
-    Serial.print(" | ");
-    Serial.println(counter_off);
+    Serial.println(data, 4);
+    myLCD.setCursor(0, 0);
+    myLCD.print("DT: ");
+    myLCD.print(DTp, 0);
+    myLCD.print("%");
+
+    myLCD.setCursor(0, 1);
+    myLCD.print(counter_on);
+    myLCD.print(" | ");
+    myLCD.print(counter_off);
   }
 }
