@@ -7,7 +7,9 @@ float data = 0;
 int counter_on = 0, counter_off = 0;
 const int freq = 5000;
 const int konstanta = (int)(1.6e7 / (100.0 * freq));
-int DTp = 50;   //Ingat kalau Duty Cycle output/input = 1 - DTp karena pake PMOS
+int DTp = 50;   //Ingat kalau Duty Cycle output/input = 1 - DTp kalau pake PMOS
+const int max_debounce_count = 2000;    //1250 = 5 ms
+int debounce_count = 0;
 
 LCD_I2C myLCD(0x27, 16, 2);
 
@@ -31,7 +33,7 @@ void init_int(){
   TCCR1A = 0;
   TCCR1B = (1 << WGM12);
 
-  // Set prescaler ke 64, CS10 = 1, CS11 = CS12 = 0
+  // Set prescaler ke 1, CS10 = 1, CS11 = CS12 = 0
   TCCR1B |= (1 << CS10);
 
   // Enable output compare A dengan macro OCIE1A, vektornya pake TIMER1 COMPA
@@ -59,25 +61,36 @@ void init_int(){
 
 
 ISR(INT0_vect){
-  if(DTp >= 95){
-    DTp = 95;
-  }
-  else{
-    DTp += 1;
+  // Note: 97% sepertinya sudah HIGH semua (dilihat dari serial dengan sampling 25 us)
+  if(debounce_count >= max_debounce_count){
+    debounce_count = 0;
+    if(DTp >= 95){
+      DTp = 95;
+    }
+    else{
+      DTp += 1;
+    }    
   }
 }
 
 ISR(INT1_vect){
-  if(DTp <= 5){
-    DTp = 5;
-  }
-  else{
-    DTp -= 1;
+  // Note: 3% sepertinya sudah LOW semua (dilihat dari serial dengan smapling 25 us)
+  if(debounce_count >= max_debounce_count){
+    debounce_count = 0;
+    if(DTp <= 5){
+      DTp = 5;
+    }
+    else{
+      DTp -= 1;
+    }     
   }
 }
 
 
 ISR(TIMER1_COMPA_vect){
+  if(debounce_count < max_debounce_count){
+    debounce_count++;
+  }
   counter_on = konstanta * (100 - DTp) - 1;
   counter_off = konstanta * DTp - 1;
   if(flag){
@@ -137,12 +150,13 @@ void loop() {
     Serial.println(data, 4);
     myLCD.setCursor(0, 0);
     myLCD.print("DT: ");
-    myLCD.print((float)DTp, 1);
-    myLCD.print("%");
+    myLCD.print((float)(100 - DTp), 1);
+    myLCD.print("%/");
+    myLCD.print((float)(debounce_count), 1);
 
     myLCD.setCursor(0, 1);
     myLCD.print((float)counter_on, 1);
-    myLCD.print(" | ");
+    myLCD.print("/");
     myLCD.print((float)counter_off, 1);
   }
 }
